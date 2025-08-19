@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Compressor Performance Curve — Interactive</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b0f14; color:#e6eef7; }
+    .wrap { max-width: 820px; margin: 24px auto; padding: 16px; }
+    .panel { background:#0f1720; border:1px solid #1b2838; border-radius:18px; padding:16px 18px; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+    .row { display:flex; align-items:center; gap:12px; margin-top:12px; }
+    input[type="range"] { width:100%; accent-color:#ef4444; }
+    .hint { font-size: 12px; color:#9fb3c8; }
+  </style>
+</head>
+<body>
+  <div class="wrap panel">
+    <div id="plot" style="width:100%;height:520px;"></div>
+
+    <div class="row">
+      <label for="slider"><b>Discharge Resistance</b></label>
+      <input id="slider" type="range" min="0" max="100" value="50" />
+    </div>
+    <div class="hint">⬅️ Higher resistance → operating point moves toward <b>Surge</b> · Lower resistance → toward <b>Choke</b> ➡️</div>
+  </div>
+
+  <script>
+    // --- Fixed compressor curve (stylized, downward-sloping, smooth) ---
+    // Control points (normalized Flow vs Discharge Pressure)
+    const X = [0.10, 0.20, 0.35, 0.50, 0.65, 0.80, 0.90];
+    const Y = [1.20, 1.15, 1.05, 0.90, 0.70, 0.45, 0.30];
+
+    // Plotly trace for curve (spline = smooth, curve stays fixed)
+    const curve = {
+      x: X, y: Y,
+      type: 'scatter',
+      mode: 'lines',
+      line: { width: 4, color: '#60a5fa', shape: 'spline', smoothing: 1.2 },
+      hoverinfo: 'skip',
+      name: 'Compressor Curve'
+    };
+
+    // Operating point (red dot). Starts mid-curve.
+    const startIdx = Math.floor(X.length / 2);
+    const point = {
+      x: [X[startIdx]],
+      y: [Y[startIdx]],
+      type: 'scatter',
+      mode: 'markers',
+      marker: { size: 14, color: '#ef4444', line: { width: 2, color: 'white' } },
+      hoverinfo: 'skip',
+      name: 'Operating Point'
+    };
+
+    // Labels (annotations)
+    // Approximate positions; adjust if you tweak the curve points
+    const annotations = [
+      { x: X[0], y: Y[0] + 0.05, text: 'Surge Limit Line', showarrow: false, font: { color: '#cbd5e1' } },
+      { x: 0.28, y: 1.10, text: 'Surge Control Line', showarrow: false, font: { color: '#cbd5e1' } },
+      { x: 0.55, y: 0.86, text: 'Rated Point', showarrow: false, font: { color: '#86efac' } },
+      { x: X[X.length - 1], y: Y[Y.length - 1] - 0.05, text: 'Stonewall / Choke', showarrow: false, font: { color: '#cbd5e1' } }
+    ];
+
+    // Axes: titles only; hide ticks/grid/zerolines
+    const layout = {
+      paper_bgcolor: '#0f1720',
+      plot_bgcolor: '#0f1720',
+      margin: { l: 60, r: 20, t: 40, b: 60 },
+      showlegend: false,
+      xaxis: {
+        title: { text: 'Flow', font: { color: '#e6eef7' } },
+        showticklabels: false, showgrid: false, zeroline: false, ticks: ''
+      },
+      yaxis: {
+        title: { text: 'Discharge Pressure', font: { color: '#e6eef7' } },
+        showticklabels: false, showgrid: false, zeroline: false, ticks: ''
+      },
+      annotations
+    };
+
+    Plotly.newPlot('plot', [curve, point], layout, {displayModeBar: false, responsive: true});
+
+    // --- Helper: linear interpolation along polyline for smooth dot motion ---
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    // Given scalar s in [0, N-1], compute interpolated (x,y) on the polyline
+    function positionOnCurve(s) {
+      const N = X.length;
+      if (s <= 0) return { x: X[0], y: Y[0] };
+      if (s >= N - 1) return { x: X[N-1], y: Y[N-1] };
+      const i = Math.floor(s);
+      const t = s - i;
+      return { x: lerp(X[i], X[i+1], t), y: lerp(Y[i], Y[i+1], t) };
+    }
+
+    // Slider logic:
+    // val=100 (high resistance) -> move to SURGE side (leftmost, s=0)
+    // val=0   (low  resistance) -> move to CHOKE side (rightmost, s=N-1)
+    const slider = document.getElementById('slider');
+    slider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value, 10);
+      const N = X.length;
+      const s = (1 - val / 100) * (N - 1); // <-- reversed mapping (technically correct)
+      const p = positionOnCurve(s);
+
+      // Update only the dot (trace index 1)
+      Plotly.restyle('plot', { x: [[p.x]], y: [[p.y]] }, [1]);
+    });
+  </script>
+</body>
+</html>
